@@ -1,1 +1,3 @@
-# Create a function that returns the current timestamnp using the datetime library
+#Create a function that gets the current date and time
+def current_datetime():
+    
