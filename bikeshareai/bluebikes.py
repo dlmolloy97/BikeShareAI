@@ -19,6 +19,7 @@ from dash import dcc
 #import dash_html_components as html
 from dash import html
 import plotly.express as px
+from dash.dependencies import Input, Output
 
 class BlueBikesDataPipeline:
 
@@ -27,26 +28,36 @@ class BlueBikesDataPipeline:
         self.engine = create_engine('postgresql://postgres:postgres@localhost:5432/desmondmolloy')
         # Create a connection to the engine called `conn`
         self.conn = self.engine.connect()
+
+    def connect_to_db(self):
+        # Create a connection to the engine called `conn`
+        self.conn = self.engine.connect()
+        # Return the connection
+        return self.conn
     
     def unzip_file_to_local_csv(self):
         # Download the zip file from the URL
-        request.urlretrieve(self.url, 'data.zip')
+        # request.urlretrieve(self.url, 'data.zip')
         # Unzip the file
         ZipFile('data.zip').extractall('data')
         # Return the unzipped file
         # return 'data/tripdata.csv'
-    
+
     def csv_to_db(self, table_name, csv_path):
         # Read in the DataFrame from the CSV file
         df = pd.read_csv(csv_path)
         # Append the data to the `trips` table
         df.to_sql(table_name, self.conn, index=False, if_exists='append')
-    
-    def geojoin(self, geojson_path):
+
+    def enrich_journeys(self, geojson_path, trips_csv_path):
         # Read in the DataFrame from the CSV file
         df = pd.read_csv('data/current_bluebikes_stations.csv')
         # Append the data to the `trips` table
         df.to_sql('stations', self.conn, index=False, if_exists='append')
+        # Read in the trips data from the trip CSV file
+        trips_df = pd.read_csv(trips_csv_path)
+        # Append the data to the `trips` table
+        trips_df.to_sql('journeys', self.conn, index=False, if_exists='append')
         # Boston neighbourhoods
         polydf = read_file(geojson_path)
         stations = pd.read_sql('SELECT * FROM stations', self.conn)
@@ -57,51 +68,66 @@ class BlueBikesDataPipeline:
         grab_df = joined_df[['Name_left', 'Name_right', 'District']]
         matched_pairs_with_pandas = grab_df[grab_df['District'] == 'Boston']
         matched_pairs_with_pandas.columns = ['station', 'neighbourhood', 'District']
-        #matched_pairs = sqldf.run('SELECT DISTINCT Name_left as station, Name_right as neighbourhood from grab_df where District = \'Boston\'')
-        matched_pairs_with_pandas.to_sql('neighbourhood_stations', self.conn, index=False, if_exists='append')
-
-    def enrich_journeys(self):
-        # Create the SQL query
+        matched_pairs_with_pandas.to_sql('neighbourhood_stations', self.conn, index=False, if_exists='replace')
+        # Had to manually prompt Copilot here
         sql_query = """
-        SELECT
-            j.*,
-            s1.neighbourhood as start_neighbourhood,
-            s2.neighbourhood as end_neighbourhood
-        FROM journeys AS j
-        LEFT JOIN neighbourhood_stations AS s1
-        ON j.start_station_name = s1.station
-        LEFT JOIN neighbourhood_stations AS s2
-        ON j.end_station_name = s2.station
-
+        SELECT * FROM journeys
+        JOIN neighbourhood_stations
+        ON journeys.start_station_name = neighbourhood_stations.station
+        JOIN neighbourhood_stations AS neighbourhood_stations_end
+        ON journeys.end_station_name = neighbourhood_stations_end.station
         """
-        # Run the query and return the DataFrame
-        df = pd.read_sql(sql_query, self.conn)
-        df.to_sql('journeys_enriched', self.conn, index=False, if_exists='append')
-    
-class BlueBikesDashboard:
+        enriched_df = pd.read_sql(sql_query, self.conn)
+        enriched_df['start_day'] = pd.to_datetime(enriched_df['start_time']).dt.day_name()
+        enriched_df['start_hour'] = pd.to_datetime(enriched_df['start_time']).dt.hour
+        enriched_df['start_month'] = pd.to_datetime(enriched_df['start_time']).dt.month
+        enriched_df.to_sql('journeys_enriched', self.conn, index=False, if_exists='replace')
+
+class DashboardBike:
+
     def __init__(self):
+        # The line below was added manually
         self.engine = create_engine('postgresql://postgres:postgres@localhost:5432/desmondmolloy')
-        # Create a connection to the engine called `conn`
-        self.conn = self.engine.connect()
-    def create_dash_application(self, group_by='start_neighbourhood'):
-        # Create the Dash app
-        app = dash.Dash(__name__)
-        # Create a DataFrame from the Postgres table
-        df = pd.read_sql('SELECT {}, COUNT(*) as journeys_count FROM journeys_enriched group by 1'.format(group_by), self.conn)
-        # Create a bar chart of the number of trips by neighbourhood
-        fig = px.bar(df, x='start_neighbourhood', y='journeys_count')
-        # Create the Dash app layout
-        app.layout = html.Div(children=[
-            html.H1(children='Hello Dash'),
-            dcc.Graph(
-                id='example-graph',
-                figure=fig
-            )
+        self.app = dash.Dash(__name__)
+        self.app.layout = html.Div([
+            html.H1('Bike Dashboard'),
+            html.H2('Created by Desmond Molloy'),
+            dcc.Dropdown(
+                id='response_variable',
+                options=[
+                    {'label': 'Journeys', 'value': 'journeys'},
+                    {'label': 'Duration', 'value': 'duration'}
+                ],
+                value='journeys'
+            ),
+            dcc.Dropdown(
+                id='grouping_variable',
+                options=[
+                    {'label': 'Start Neighbourhood', 'value': 'start_neighbourhood'},
+                    {'label': 'End Neighbourhood', 'value': 'end_neighbourhood'},
+                    {'label': 'Day of Week', 'value': 'day_of_week'},
+                    {'label': 'Hour of Day', 'value': 'hour_of_day'},
+                    {'label': 'Month of Year', 'value': 'month_of_year'}
+                ],
+                value='start_neighbourhood'
+            ),
+            dcc.Graph(id='bike_graph')
         ])
-        # Return the app
-        return app
+
+        @self.app.callback(
+            Output('bike_graph', 'figure'),
+            Input('response_variable', 'value'),
+            Input('grouping_variable', 'value'))
+        def update_graph(response_variable, grouping_variable):
+            if response_variable == 'journeys':
+                sql = 'SELECT {}, COUNT(*) as count FROM journeys_enriched group by 1'.format(grouping_variable)
+            else:
+                sql = 'SELECT {}, AVG(duration) as count FROM journeys_enriched group by 1'.format(grouping_variable)
+            df = pd.read_sql(sql, con=self.engine)
+            fig = px.bar(df, x=grouping_variable, y='count')
+            return fig
+        
     def run(self):
-        # Create the Dash app
-        app = self.create_dash_application()
-        # Run the app
-        app.run_server(debug=True, use_reloader=False)
+        self.app.run_server(debug=True, use_reloader=False)
+    
+# Path: sub_benches/outbench_20230528.ipynb

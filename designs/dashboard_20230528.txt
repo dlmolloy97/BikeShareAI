@@ -1,0 +1,53 @@
+The original design was as follows:
+
+# - create_dash_application: create a Dash application. It should have two dropdown menus, with the variables response_variable and grouping_variable
+# response_variable should be in ["journeys","duration"]. If response_variable = journeys, then pass a SQL statement that counts all records by grouping_variable
+# If response_variable is duration, then pass a SQL statement that selects the mean duration froup by grouping variable
+# Grouping variable should be in the following:
+# start_neighbourhood
+# end_neighbourhood
+# day_of_week
+# hour_of_day
+# month_of_year
+# The application should have a bar graph showing the response variable by grouping variable
+# - run: call the create_dash_application method and run the app
+
+To improve performance of the AI system, it was decided to specify the Dash methods needed to create a 
+
+# Write a class called DashboardBike with the following methods:
+
+# create_dash_application: Creates a Dash application with one bar graph, and two instances of dcc.Dropdown. 
+# The first instance of dcc.Dropdown should be called response_variable
+# The second instance should be called grouping_variable
+
+# If response_variable = journeys, then pass a SQL statement that counts all records by grouping_variable
+# If response_variable = duration, then pass a SQL statement that selects the mean duration group by grouping variable
+
+# Grouping variable should be in the following:
+# start_neighbourhood
+# end_neighbourhood
+# day_of_week
+# hour_of_day
+# month_of_year
+# The application should have a bar graph showing the response variable by grouping variable
+
+Unfortunately, the class produced required a DF argument. It was therfore specified that there should be no arguments
+
+# Write a class called DashboardBike with the following methods:
+
+# - create_dash_application: Takes no arguments. Creates a Dash application with one bar graph, and two instances of dcc.Dropdown. 
+# The first instance of dcc.Dropdown should be called response_variable
+# The second instance should be called grouping_variable
+
+# If response_variable = journeys, then pass a SQL statement that counts all records by grouping_variable
+# If response_variable = duration, then pass a SQL statement that selects the mean duration group by grouping variable
+
+# Grouping variable should be in the following:
+# start_neighbourhood
+# end_neighbourhood
+# day_of_week
+# hour_of_day
+# month_of_year
+# The application should have a bar graph showing the response variable by grouping variable
+
+# - run: Calls create_dash_application and runs the Dash app
