@@ -22,66 +22,53 @@ import plotly.express as px
 from dash.dependencies import Input, Output
 
 class BlueBikesDataPipeline:
-
-    def __init__(self, url):
-        self.url = url
-        self.engine = create_engine('postgresql://postgres:postgres@localhost:5432/desmondmolloy')
-        # Create a connection to the engine called `conn`
-        self.conn = self.engine.connect()
-
-    def connect_to_db(self):
-        # Create a connection to the engine called `conn`
-        self.conn = self.engine.connect()
-        # Return the connection
-        return self.conn
     
-    def unzip_file_to_local_csv(self):
-        # Download the zip file from the URL
-        # request.urlretrieve(self.url, 'data.zip')
-        # Unzip the file
-        ZipFile('data.zip').extractall('data')
-        # Return the unzipped file
-        # return 'data/tripdata.csv'
+        def __init__(self, url):
+            self.url = url
+            self.engine = create_engine('postgresql://postgres:postgres@localhost:5432/desmondmolloy')
+            # Create a connection to the engine called `conn`
+            self.conn = self.engine.connect()
+        
+        def unzip_file_to_local_csv(self):
+            # Download the zip file from the URL
+            request.urlretrieve(self.url, 'data.zip')
+            # Unzip the file
+            ZipFile('data.zip').extractall('data')
+            # Return the unzipped file
+            # return 'data/tripdata.csv'
+        
+        def df_to_db(self, table_name, dataframe):
+            # Append the data to the `trips` table
+            dataframe.to_sql(table_name, self.conn, index=False, if_exists='append')
+        
+        def main_join(self, geojson_path, station_path, journeys_path):
+            neighbourhoods = read_file(geojson_path)
+            stations = pd.read_csv(station_path)
+            journeys = pd.read_csv(journeys_path)
+            neighbourhoods = neighbourhoods[['Name', 'geometry']]
+            neighbourhoods.columns = ['neighbourhood', 'geometry']
+            journeys = pd.read_csv(journeys_path)
+            stations = stations[['Number', 'Name', 'Latitude', 'Longitude']]
+            stations.columns = ['station_id', 'station_name', 'latitude', 'longitude']
+            stations_neighbourhoods = GeoDataFrame(stations, geometry=points_from_xy(stations.longitude, stations.latitude))
+            stations_neighbourhoods.set_crs(epsg='4326', inplace=True)
+            stations_neighbourhoods = stations_neighbourhoods.sjoin(neighbourhoods, how="left")
+            journeys_enriched = journeys.merge(stations_neighbourhoods, left_on='start_station_name', right_on='station_name', how='left')
+            journeys_enriched = journeys_enriched.merge(stations_neighbourhoods, left_on='end_station_name', right_on='station_name', how='left')
+            journeys_enriched = journeys_enriched.drop(['station_name_x', 'station_name_y'], axis=1)
+            journeys_enriched = journeys_enriched.rename(columns={'neighbourhood_x': 'start_neighbourhood', 'neighbourhood_y': 'end_neighbourhood'})
+            journeys_enriched = journeys_enriched.dropna()
+            journeys_enriched['duration'] = pd.to_datetime(journeys_enriched['ended_at']) - pd.to_datetime(journeys_enriched['started_at'])
+            journeys_enriched['duration'] = journeys_enriched['duration'].dt.total_seconds()
+            journeys_enriched['duration'] = journeys_enriched['duration'] / 60
+            journeys_enriched['duration'] = journeys_enriched['duration'].astype(int)
+            journeys_enriched['journey_id'] = journeys_enriched.index
+            journeys_enriched['day_of_week'] = pd.to_datetime(journeys_enriched['started_at']).dt.day_name()
+            journeys_enriched['hour_of_day'] = pd.to_datetime(journeys_enriched['started_at']).dt.hour
+            journeys_enriched['month_of_year'] = pd.to_datetime(journeys_enriched['started_at']).dt.month
+            journeys_enriched = journeys_enriched[['journey_id', 'started_at', 'ended_at', 'duration', 'start_neighbourhood', 'end_neighbourhood', 'day_of_week', 'hour_of_day', 'month_of_year']]
+            journeys_enriched.to_sql('journeys_enriched', self.conn, index=False, if_exists='replace')
 
-    def csv_to_db(self, table_name, csv_path):
-        # Read in the DataFrame from the CSV file
-        df = pd.read_csv(csv_path)
-        # Append the data to the `trips` table
-        df.to_sql(table_name, self.conn, index=False, if_exists='append')
-
-    def enrich_journeys(self, geojson_path, trips_csv_path):
-        # Read in the DataFrame from the CSV file
-        df = pd.read_csv('data/current_bluebikes_stations.csv')
-        # Append the data to the `trips` table
-        df.to_sql('stations', self.conn, index=False, if_exists='append')
-        # Read in the trips data from the trip CSV file
-        trips_df = pd.read_csv(trips_csv_path)
-        # Append the data to the `trips` table
-        trips_df.to_sql('journeys', self.conn, index=False, if_exists='append')
-        # Boston neighbourhoods
-        polydf = read_file(geojson_path)
-        stations = pd.read_sql('SELECT * FROM stations', self.conn)
-        pointdf = GeoDataFrame(
-            stations, geometry=points_from_xy(stations.Longitude, stations.Latitude))
-        pointdf.set_crs(epsg='4326', inplace=True)
-        joined_df = pointdf.sjoin(polydf, how="left")
-        grab_df = joined_df[['Name_left', 'Name_right', 'District']]
-        matched_pairs_with_pandas = grab_df[grab_df['District'] == 'Boston']
-        matched_pairs_with_pandas.columns = ['station', 'neighbourhood', 'District']
-        matched_pairs_with_pandas.to_sql('neighbourhood_stations', self.conn, index=False, if_exists='replace')
-        # Had to manually prompt Copilot here
-        sql_query = """
-        SELECT * FROM journeys
-        JOIN neighbourhood_stations
-        ON journeys.start_station_name = neighbourhood_stations.station
-        JOIN neighbourhood_stations AS neighbourhood_stations_end
-        ON journeys.end_station_name = neighbourhood_stations_end.station
-        """
-        enriched_df = pd.read_sql(sql_query, self.conn)
-        enriched_df['start_day'] = pd.to_datetime(enriched_df['start_time']).dt.day_name()
-        enriched_df['start_hour'] = pd.to_datetime(enriched_df['start_time']).dt.hour
-        enriched_df['start_month'] = pd.to_datetime(enriched_df['start_time']).dt.month
-        enriched_df.to_sql('journeys_enriched', self.conn, index=False, if_exists='replace')
 
 class DashboardBike:
 
