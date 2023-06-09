@@ -8,7 +8,7 @@
 # The second one should include the following methods:
 # - create_dash_application: create a Dash app that displays the number of trips by start and end neighbourhood, from the journeys_enriched table
 # - run: call the create_dash_application method and run the app
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 import pandas as pd
 from urllib import request
 from zipfile import ZipFile
@@ -110,7 +110,7 @@ class DashboardBike:
                 sql = 'SELECT {}, COUNT(*) as count FROM journeys_enriched group by 1'.format(grouping_variable)
             else:
                 sql = 'SELECT {}, AVG(duration) as count FROM journeys_enriched group by 1'.format(grouping_variable)
-            df = pd.read_sql(sql, con=self.engine)
+            df = pd.read_sql(text(sql), con=self.engine.connect())
             fig = px.bar(df, x=grouping_variable, y='count')
             return fig
         
