@@ -1,0 +1,36 @@
+[project]
+name = "bikeshareai"
+description = "BikeshareAI: A library for bikeshare prediction developed using GitHub Copilot"
+version = "0.1.0"
+authors = [
+    { name = "Desmond Molloy", email = "dlmolloy97@gmail.com" }
+]
+dependencies = [
+    "sqlalchemy",
+    "pandas",
+    "numpy",
+    "dash",
+    "dash-bootstrap-components",
+    "dash-core-components",
+    "dash-html-components",
+    "dash-table",
+    "plotly",
+    "scikit-learn",
+    "matplotlib",
+    "seaborn",
+    "jupyterlab",
+    "jupyter-dash",
+    "geopandas",
+    "shapely",
+    "urllib3"
+]
+
+[tool.setuptools]
+py-modules = []
+
+[project.optional-dependencies]
+dev = [
+    "tox",
+    "pre-commit",
+    "bump2version"
+]

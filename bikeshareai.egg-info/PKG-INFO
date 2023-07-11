@@ -1,0 +1,6 @@
+Metadata-Version: 2.1
+Name: bikeshareai
+Version: 0.1.0
+Summary: BikeshareAI: A library for bikeshare prediction developed using GitHub Copilot
+Author-email: Desmond Molloy <dlmolloy97@gmail.com>
+Provides-Extra: dev

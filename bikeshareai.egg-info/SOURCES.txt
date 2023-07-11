@@ -1,0 +1,7 @@
+README.md
+pyproject.toml
+bikeshareai.egg-info/PKG-INFO
+bikeshareai.egg-info/SOURCES.txt
+bikeshareai.egg-info/dependency_links.txt
+bikeshareai.egg-info/requires.txt
+bikeshareai.egg-info/top_level.txt
